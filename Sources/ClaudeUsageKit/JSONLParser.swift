@@ -49,8 +49,27 @@ public enum JSONLParser {
 
         let input = usage["input_tokens"] as? Int ?? 0
         let output = usage["output_tokens"] as? Int ?? 0
-        let cacheCreate = usage["cache_creation_input_tokens"] as? Int ?? 0
         let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+
+        // cache_creation_input_tokens is the rolled-up total; the nested
+        // cache_creation dict breaks it down by TTL. Prefer the breakdown
+        // when present so we can price 5m and 1h separately.
+        let cacheCreateTotal = usage["cache_creation_input_tokens"] as? Int ?? 0
+        let nested = usage["cache_creation"] as? [String: Any]
+        let cc5m = nested?["ephemeral_5m_input_tokens"] as? Int ?? 0
+        let cc1h = nested?["ephemeral_1h_input_tokens"] as? Int ?? 0
+
+        // If nested fields are missing assume it's all 5m (Anthropic's
+        // pre-1h-cache default rate).
+        let resolved5m: Int
+        let resolved1h: Int
+        if nested == nil {
+            resolved5m = cacheCreateTotal
+            resolved1h = 0
+        } else {
+            resolved5m = cc5m
+            resolved1h = cc1h
+        }
 
         return UsageEvent(
             timestamp: timestamp,
@@ -59,7 +78,8 @@ public enum JSONLParser {
             model: model,
             inputTokens: input,
             outputTokens: output,
-            cacheCreationTokens: cacheCreate,
+            cacheCreation5mTokens: resolved5m,
+            cacheCreation1hTokens: resolved1h,
             cacheReadTokens: cacheRead
         )
     }

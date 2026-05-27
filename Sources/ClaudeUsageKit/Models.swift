@@ -8,11 +8,52 @@ public struct UsageEvent: Sendable, Hashable {
     public let model: String
     public let inputTokens: Int
     public let outputTokens: Int
-    public let cacheCreationTokens: Int
+    /// 5-minute ephemeral cache writes (Anthropic charges 1.25× input).
+    public let cacheCreation5mTokens: Int
+    /// 1-hour ephemeral cache writes (Anthropic charges 2.00× input). Claude Code
+    /// uses the 1-hour TTL by default for its session context — this is usually
+    /// the dominant cache_creation column for CC users.
+    public let cacheCreation1hTokens: Int
     public let cacheReadTokens: Int
+
+    /// Backwards-compatible total of both TTLs.
+    public var cacheCreationTokens: Int { cacheCreation5mTokens + cacheCreation1hTokens }
 
     public var totalInputEquivalent: Int {
         inputTokens + cacheCreationTokens + cacheReadTokens
+    }
+
+    public init(
+        timestamp: Date, requestId: String, sessionId: String, model: String,
+        inputTokens: Int, outputTokens: Int,
+        cacheCreation5mTokens: Int = 0, cacheCreation1hTokens: Int = 0,
+        cacheReadTokens: Int
+    ) {
+        self.timestamp = timestamp
+        self.requestId = requestId
+        self.sessionId = sessionId
+        self.model = model
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheCreation5mTokens = cacheCreation5mTokens
+        self.cacheCreation1hTokens = cacheCreation1hTokens
+        self.cacheReadTokens = cacheReadTokens
+    }
+
+    /// Backwards-compatible initializer for callers that still pass a single
+    /// `cacheCreationTokens`. Assumes the 5-minute TTL (Anthropic's original
+    /// default before they introduced 1h ephemeral caches).
+    public init(
+        timestamp: Date, requestId: String, sessionId: String, model: String,
+        inputTokens: Int, outputTokens: Int,
+        cacheCreationTokens: Int, cacheReadTokens: Int
+    ) {
+        self.init(
+            timestamp: timestamp, requestId: requestId, sessionId: sessionId,
+            model: model, inputTokens: inputTokens, outputTokens: outputTokens,
+            cacheCreation5mTokens: cacheCreationTokens, cacheCreation1hTokens: 0,
+            cacheReadTokens: cacheReadTokens
+        )
     }
 }
 
@@ -31,6 +72,8 @@ public struct UsageWindow: Sendable {
     public var totalInputTokens: Int { events.reduce(0) { $0 + $1.inputTokens } }
     public var totalOutputTokens: Int { events.reduce(0) { $0 + $1.outputTokens } }
     public var totalCacheCreation: Int { events.reduce(0) { $0 + $1.cacheCreationTokens } }
+    public var totalCacheCreation5m: Int { events.reduce(0) { $0 + $1.cacheCreation5mTokens } }
+    public var totalCacheCreation1h: Int { events.reduce(0) { $0 + $1.cacheCreation1hTokens } }
     public var totalCacheRead: Int { events.reduce(0) { $0 + $1.cacheReadTokens } }
     public var messageCount: Int { events.count }
     public var uniqueRequests: Int { Set(events.map { $0.requestId }).count }
