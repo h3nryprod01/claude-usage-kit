@@ -1,0 +1,19 @@
+name: Swift Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift build -c release
+      - run: swift test --enable-code-coverage
+      - name: CLI smoke
+        run: |
+          mkdir -p /tmp/fake-home/.claude/projects
+          HOME=/tmp/fake-home swift run -c release claude-usage --json
