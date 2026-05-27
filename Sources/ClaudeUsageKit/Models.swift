@@ -22,6 +22,12 @@ public struct UsageWindow: Sendable {
     public let end: Date
     public let events: [UsageEvent]
 
+    public init(start: Date, end: Date, events: [UsageEvent]) {
+        self.start = start
+        self.end = end
+        self.events = events
+    }
+
     public var totalInputTokens: Int { events.reduce(0) { $0 + $1.inputTokens } }
     public var totalOutputTokens: Int { events.reduce(0) { $0 + $1.outputTokens } }
     public var totalCacheCreation: Int { events.reduce(0) { $0 + $1.cacheCreationTokens } }
@@ -44,6 +50,12 @@ public struct RateLimitFrame: Sendable {
     public let frameStart: Date
     public let frameEnd: Date     // frameStart + 5h
     public let usage: UsageWindow
+
+    public init(frameStart: Date, frameEnd: Date, usage: UsageWindow) {
+        self.frameStart = frameStart
+        self.frameEnd = frameEnd
+        self.usage = usage
+    }
 
     public var timeRemaining: TimeInterval { max(0, frameEnd.timeIntervalSinceNow) }
     public var elapsedSinceStart: TimeInterval { Date().timeIntervalSince(frameStart) }
