@@ -37,27 +37,32 @@ public struct UsageAggregator: Sendable {
         return UsageWindow(start: start, end: now, events: events)
     }
 
-    /// Detect the active Anthropic 5-hour rate-limit frame.
+    /// Detect the active Anthropic 5-hour rate-limit frame using fixed 5h
+    /// blocks (matches how Claude Code's /usage UI reports "resets in X").
     ///
-    /// Heuristic: the frame starts at the first message in the most recent
-    /// burst, where a "burst" is a run of messages separated by < 5h gaps.
-    /// If the most recent event is older than 5h ago, no frame is active.
+    /// Algorithm — walk events oldest → newest. Each event either fits in the
+    /// current block, or (if its timestamp is past `block_start + 5h`) starts
+    /// a NEW block. The last block walked is the current one. If `now` is past
+    /// that block's end, no frame is active.
+    ///
+    /// Why not a sliding 5h window: sliding counts every event in the last 5h
+    /// regardless of where the block boundary is, so it overcounts dramatically
+    /// when the user just started a fresh block but had heavy activity in the
+    /// previous one.
     public func currentFrame(now: Date = Date()) throws -> RateLimitFrame? {
         let events = try loadAllEvents()
-        guard let last = events.last, now.timeIntervalSince(last.timestamp) < 18_000 else {
-            return nil
-        }
+        guard let first = events.first else { return nil }
 
-        var frameStart = last.timestamp
-        var prev = last.timestamp
-        for ev in events.reversed() {
-            if prev.timeIntervalSince(ev.timestamp) > 18_000 { break }
-            frameStart = ev.timestamp
-            prev = ev.timestamp
+        let frameLength: TimeInterval = 18_000   // 5h
+        var blockStart = first.timestamp
+        for ev in events where ev.timestamp >= blockStart.addingTimeInterval(frameLength) {
+            blockStart = ev.timestamp
         }
-        let frameEnd = frameStart.addingTimeInterval(18_000)
-        let window = UsageWindow(start: frameStart, end: frameEnd,
-                                 events: events.filter { $0.timestamp >= frameStart && $0.timestamp <= frameEnd })
-        return RateLimitFrame(frameStart: frameStart, frameEnd: frameEnd, usage: window)
+        let blockEnd = blockStart.addingTimeInterval(frameLength)
+        guard now < blockEnd else { return nil }
+
+        let inFrame = events.filter { $0.timestamp >= blockStart && $0.timestamp <= now }
+        let window = UsageWindow(start: blockStart, end: blockEnd, events: inFrame)
+        return RateLimitFrame(frameStart: blockStart, frameEnd: blockEnd, usage: window)
     }
 }
