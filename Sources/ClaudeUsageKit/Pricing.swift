@@ -35,7 +35,16 @@ public struct PricingTable: Sendable {
     public let prices: [String: ModelPrice]
     public let fallback: ModelPrice
 
-    public func cost(for event: UsageEvent) -> Double {
+    /// Dollar cost of an event.
+    ///
+    /// `cacheReadFactor` scales the cache-read contribution. For pure billing
+    /// pass 1.0 (default). For the 5-hour *rate-limit* metric pass ~0.0:
+    /// Anthropic's compute-based 5h cap barely counts cache reads (they're
+    /// served from cache), yet cache reads are the dominant token volume for
+    /// Claude Code sessions (tens of millions / frame). Counting them at full
+    /// price over-estimates the rate-limit ratio ~2× and makes calibration
+    /// drift as the cache-read share of a block changes.
+    public func cost(for event: UsageEvent, cacheReadFactor: Double = 1.0) -> Double {
         let p = prices[event.model]
             ?? prices.first { event.model.contains($0.key) }?.value
             ?? fallback
@@ -43,7 +52,7 @@ public struct PricingTable: Sendable {
               + Double(event.outputTokens) * p.output
               + Double(event.cacheCreation5mTokens) * p.cacheWrite5m
               + Double(event.cacheCreation1hTokens) * p.cacheWrite1h
-              + Double(event.cacheReadTokens) * p.cacheRead) / 1_000_000
+              + Double(event.cacheReadTokens) * p.cacheRead * cacheReadFactor) / 1_000_000
     }
 
     /// Anthropic's published rates as of 2026-05. Verify against the price page

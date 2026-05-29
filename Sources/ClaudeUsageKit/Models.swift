@@ -82,8 +82,12 @@ public struct UsageWindow: Sendable {
     public var lastEventAt: Date? { events.map(\.timestamp).max() }
 
     /// Estimated cost in USD based on a pricing table.
-    public func estimatedCostUSD(pricing: PricingTable = .default) -> Double {
-        events.reduce(0) { $0 + pricing.cost(for: $1) }
+    ///
+    /// `cacheReadFactor` scales the cache-read contribution: 1.0 for true
+    /// billing, ~0.0 for the rate-limit metric (see `PricingTable.cost`).
+    public func estimatedCostUSD(pricing: PricingTable = .default,
+                                 cacheReadFactor: Double = 1.0) -> Double {
+        events.reduce(0) { $0 + pricing.cost(for: $1, cacheReadFactor: cacheReadFactor) }
     }
 }
 
